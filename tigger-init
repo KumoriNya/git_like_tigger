@@ -1,0 +1,28 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-init
+# Initialise the tigger repository which contains the default branch
+# and the index for adding directories into the corresponding branches.
+
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
+
+if [ -d ".tigger" ]
+then
+    echo "tigger-init: error: .tigger already exists" 1>&2
+    exit 1
+fi
+
+echo "Initialized empty tigger repository in .tigger"
+mkdir ".tigger"
+cd ".tigger"
+# Create directory for the default branch master 
+# and the index folder.
+mkdir ".master"
+mkdir ".master/.index"
+touch ".master/.current_commit_version"
+mkdir ".commits"
+echo master > .current_branch_name
+touch .commit_log

@@ -1,0 +1,204 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-status
+# Shows the status of all files in the directory.
+# Errors:
+    # -1.   .tigger not exists
+    # 0.    too many arguments (more than 0)
+
+# Output cases:
+    # 0.      untracked if not in index
+    # 1.1     deleted if
+    #     file has backup file AND
+    #     not in the repo AND not in the index
+    # 1.2     file deleted if
+    #     file has backup file AND
+    #     not in repo AND in the index
+    # 2.1     added to index if
+    #     the file exists in the index, not in the recent backup
+    # 2.2     added to index, file deleted If
+    #     the file exists in the index, not in the recent backup and deleted
+    # 3.1     same as repo if 
+    #     the file in the directory is the same as the
+    #     the back up file in the recent commit 
+    # 3.2     file changed, changes not staged for commit if
+    #     the file has been committed, AND
+    #     the file in the directory is not the same as 
+    #     the back up file in the recent commit AND
+    #     the file in the directory is not the same as the file in the index
+    # 4.1     file changed, changes staged for commit if
+    #     the file has been committed, AND
+    #     the file in the directory is not the same as 
+    #     the back up file in the recent commit AND
+    #     the file in the directory is the same as the file in the index
+    # 4.2     file changed, different changes staged for commit if
+    #     the file has been committed, AND
+    #     the file in the directory is not the same as 
+    #     the back up file in the recent commit AND
+    #     the file in the directory is added
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
+
+# Error handlers
+if [ ! -d ".tigger" ]
+then
+    echo "tigger-status: error: tigger repository directory .tigger not found" 1>&2
+    exit 1
+fi
+
+if [ $# -gt 0 ]
+then
+    echo "usage: tigger-status" 1>&2
+    exit 1
+fi
+
+# obtain branch name, current version of commit of the branch,
+branch_name=$(cat .tigger/.current_branch_name)
+index_of_branch=.tigger/."$branch_name"/.index
+recent_commit_number=$(cat .tigger/."$branch_name/.current_commit_version")
+recent_commit_folder=.tigger/."$branch_name"/."$recent_commit_number"
+# echo "Current branch name: $branch_name, index of branch at: '$index_of_branch', recent commit number: '$recent_commit_number'"
+
+# to count the depth of the folder from the repo
+count_depth=1
+while [ -n "$(echo $recent_commit_folder | cut -d'/' -f$count_depth)" ]
+do
+    count_depth=$((count_depth+1))
+done
+
+# if the path ends with dot, then there isn't a commit folder yet, thus depth -1
+path_end_with_dot="$(echo $recent_commit_folder | grep -E '\.$' )"
+if [ -n "$path_end_with_dot" ]
+then
+    count_depth=$((count_depth-1))
+fi
+
+# to access the repo from commit folder
+back=""
+while [ "$count_depth" -gt 1 ]
+do
+    back="$back"../
+    count_depth=$((count_depth-1))
+done
+return=""
+# 0 Untraced files
+    for file in *
+    do
+        if [ -r "$file" ]
+        then
+            file_in_index="$index_of_branch/$file"
+            file_in_commit="$recent_commit_folder/$file"
+            if [ ! -r "$file_in_index" ]
+            then
+                return="$return$file - untracked\n"
+            fi
+        fi
+    done
+# 1 Deleted and 
+#   File Deleted files
+# 3 Same As Repo and 
+#   File Changed, Changes Not Staged For Commit
+#   files
+# 4 File Changed, Changes Staged For Commit and
+#   File Changed, Different Changes Staged For Commit
+#   files
+    # For files in the commit
+
+    cd "$recent_commit_folder"
+    for file in *
+    do
+        if [ -r "$file" ]
+        then
+            file_in_repo="$back$file"
+            file_in_index="$back$index_of_branch/$file"
+            if [ ! -r "$file_in_repo" ]
+            # If file does not exist in the repo
+            # AND file exists in the index
+            # then the file is deleted (by tigger-rm)
+            # else, the file is file deleted (by rm)
+            then
+                if [ -r "$file_in_index" ]
+                then
+                    return="$return$file - file deleted\n"
+                else
+                    return="$return$file - deleted\n"
+                fi
+            # If file exists in the repo
+            # case when file in commit and file in repo exist but file in index not exist is omitted, since file is then untracked, covered in # 0.
+            else
+                if [ -r "$file_in_index" ]
+                then
+                # If file_in_commit = file_in_index
+                # AND file_in_repo = file_in_commit
+                # then the file is same as repo
+                # else the file is changed and not staged for commit
+                    if diff "$file" "$file_in_index" >>/dev/null
+                    then
+                        if diff "$file" "$file_in_repo" >>/dev/null
+                        then
+                            return="$return$file - same as repo\n"
+                        else
+                            return="$return$file - file changed, changes not staged for commit\n"
+                        fi
+                # If file_in_commit != file_in_index
+                # AND file_in_repo = file_in_commit
+                # then the file is changed and staged for commit
+                # else the file is changed and different changes staged for commit
+                    else
+                        if diff "$file_in_repo" "$file_in_index" >>/dev/null
+                        then
+                            return="$return$file - file changed, changes staged for commit\n"
+                        else
+                            return="$return$file - file changed, different changes staged for commit\n"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    done
+    cd "$back"
+
+# commit folder does not exist, but index folder always exist, thus depth + 1
+if [ -n "$path_end_with_dot" ]
+then
+    back="$back"../
+fi
+
+# 2 Added To Index files and
+#   Added To Index File Deleted
+#   files
+    cd "$index_of_branch"
+    for file in *
+    do
+        # in the index
+        if [ -r "$file" ]
+        then
+            file_in_repo="$back$file"
+            file_in_commit="$back$recent_commit_folder/$file"
+            # not in the commit
+            if [ ! -r "$file_in_commit" ]
+            then
+                # If file does not exist in commit
+                # And the file exists in the repo
+                # then the file is added to index
+                # else the file is added to index, file deleted
+                if [ -r "$file_in_repo" ]
+                then
+                    if diff "$file_in_repo" "$file" >>/dev/null
+                    then
+                        return="$return$file - added to index\n"
+                    else
+                        return="$return$file - added to index, file changed\n"
+                    fi
+                else
+                    return="$return$file - added to index, file deleted\n"
+                fi
+            fi
+        fi
+    done
+    cd "$back"
+cd .tigger || exit 1
+echo "$return"> .return
+sort .return | sed '/^$/d' | cat

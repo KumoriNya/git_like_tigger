@@ -1,0 +1,209 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-rm
+# Removes a file from the index, or from the current directory and the index.
+# If the --cached option is specified, the file is removed only from the index, and not from the current directory.
+# Errors:
+    # -1.   .tigger not exists
+    # 0.    too few arguments (less than 1) OR if $1 starts with --, then ...
+    # 1.    file not in the tigger repository
+    # 2.    file has staged changes in the index
+    # 3.    file in the repository is different to the working file
+    # 4.    file in index is different to both the working file and the repository
+
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
+
+# Error handlers
+
+if [ ! -d ".tigger" ]
+then
+    echo "tigger-rm: error: tigger repository directory .tigger not found" 1>&2
+    exit 1
+elif [ $# -lt 1 ]
+then
+        echo "usage: tigger-rm [--force] [--cached] <filenames>" 1>&2
+        exit 1
+fi
+
+# obtain branch name, current version of commit of the branch,
+branch_name=$(cat .tigger/.current_branch_name)
+index_of_branch=.tigger/."$branch_name"/.index
+recent_commit_number=$(cat .tigger/."$branch_name/.current_commit_version")
+recent_commit_folder=.tigger/."$branch_name"/."$recent_commit_number"
+
+cd "$index_of_branch"
+for arg in "$@"
+do
+    if [ "$arg" = '--cached' ]
+    then
+        cached="true"
+        is_target_file_in_index=0
+    elif [ "$arg" = '--force' ]
+    then
+        force="true"
+        is_target_file_in_index=0
+    elif [ -n "$(echo $arg | grep -E '\-\-.*')" ]
+    then
+        echo "usage: tigger-rm [--force] [--cached] <filenames>" 1>&2
+        exit 1
+    else
+        is_target_file_in_index=1
+        for file in *
+        do
+            if [ "$arg" = "$file" ]
+            then
+                to_rm_filename="$arg"
+                file_in_root="../../../$file"
+                file_in_commit="../.$recent_commit_number/$file"
+                file_in_index="$file"
+                # If by force, no need to check
+                if [ "$file_in_index" = "$to_rm_filename" ] && [ ! "$force" = "true" ]
+                then
+                    # if working = index, check for commit
+                    if diff "$file_in_index" "$file_in_root" >>/dev/null
+                    then
+                        if [ -r "$file_in_commit" ] && diff "$file_in_index" "$file_in_commit" >>/dev/null
+                        then
+                            is_target_file_in_index=0
+                        else
+                            if [ "$cached" = "true" ]
+                            then
+                                is_target_file_in_index=0
+                            else
+                                echo "tigger-rm: error: '$to_rm_filename' has staged changes in the index" 1>&2
+                                exit 1
+                            fi
+                        fi
+                    # if working != index, check for commit
+                    else
+                        if [ -r "$file_in_commit" ] && diff "$file_in_index" "$file_in_commit" >>/dev/null
+                        then
+                            if [ "$cached" = "true" ]
+                            then
+                                is_target_file_in_index=0
+                            else
+                                echo "tigger-rm: error: '$to_rm_filename' in the repository is different to the working file" 1>&2
+                                exit 1
+                            fi
+                        else
+                            echo "tigger-rm: error: '$to_rm_filename' in index is different to both the working file and the repository" 1>&2
+                            exit 1
+                        fi
+                    fi
+                fi
+                is_target_file_in_index=0
+                break
+            fi
+        done
+    fi
+    # check if any file of the argument is not in the repository
+    if [ ! "$is_target_file_in_index" -eq 0 ]
+    then
+        echo "tigger-rm: error: '$arg' is not in the tigger repository" 1>&2
+        exit 1
+    fi
+done
+if [ "$cached" = 'true' ]
+then
+    shift
+fi
+if [ "$force" = 'true' ]
+then
+    shift
+fi
+# for all files in index, 
+# check if it needs to be rm
+    # if it does, check if it the file has been modified, i.e. file_in_index=file_in_root
+        # if it does, check if it has been committed, i.e. file_in_index=file_in_commit
+            # if it does, rm file_in_index, rm file_in_root
+        # else, error: 'file_in_index' has staged changes in the index
+    # else, error: 'file_in_index' in the repository is different to the working file
+        # check if the file has been committed, i.e. file_in_index=file_in_commit
+            # if it does, error: 'file_in_index' in index is different to both the working file and the repository
+for file_in_index in *
+do
+    operated="false"
+    # echo looking at $file_in_index and match to remove file:
+    for to_rm_filename in "$@"
+    do
+        # echo $to_rm_filename
+        # working file deleted already
+        if [ "$file_in_index" != $to_rm_filename ]
+        then
+            # echo $to_rm_filename
+            break
+        else
+            operated="true"
+        fi
+        if [ ! -r "../../../$to_rm_filename" ]
+        then
+            # echo "$file_in_index in index removing from 96"
+            # echo working file deleted
+            rm "$file_in_index"
+        fi
+        file_in_root="../../../$to_rm_filename"
+        if [ -r "../.$recent_commit_number/$to_rm_filename" ]
+        then
+            file_in_commit="../.$recent_commit_number/$to_rm_filename"
+        fi
+        if [ "$file_in_index" = "$to_rm_filename" ] && [ ! "$force" = "true" ]
+        then
+            if diff "$file_in_index" "$file_in_root" >>/dev/null
+            then
+                file_in_commit="../.$recent_commit_number/$to_rm_filename"
+                if  [ -r "$file_in_commit" ] && diff "$file_in_index" "$file_in_commit" >>/dev/null
+                then
+                    # echo "'$to_rm_filename' is up to date, can be removed"
+                    if [ ! "$cached" = "true" ]
+                    then
+                        # echo "removing file from root $file_in_root from 115"
+                        rm "$file_in_root"
+                    fi
+                    # echo "removing file from index $file_in_index from 118"
+                    rm "$file_in_index"
+                else
+                    if [ "$cached" = "true" ]
+                    then
+                        # echo "$file_in_index in index removing from 124"
+                        rm "$file_in_index"
+                    else
+                        echo "tigger-rm: error: '$to_rm_filename' has staged changes in the index" 1>&2
+                        exit 1
+                    fi
+                fi
+            else
+                if  [ -r "$file_in_commit" ] && diff "$file_in_index" "$file_in_commit" >>/dev/null
+                then
+                    if [ "$cached" = "true" ]
+                    then
+                        # echo "$file_in_index in index removing from 135"
+                        rm "$file_in_index"
+                    else
+                        echo "tigger-rm: error: '$to_rm_filename' in the repository is different to the working file" 1>&2
+                        exit 1
+                    fi
+                else
+                    echo "tigger-rm: error: '$to_rm_filename' in index is different to both the working file and the repository" 1>&2
+                    exit 1
+                fi
+            fi
+        elif [ "$file_in_index" = "$to_rm_filename" ] && [ "$force" = "true" ]
+        then
+            if [ "$cached" = "true" ]
+            then
+                # echo "$file_in_index in index removing from 151"
+                rm "$file_in_index"
+            else
+                # echo "$file_in_index in index and root removing from 154"
+                rm "$file_in_index" "$file_in_root"
+            fi
+        fi
+        if [ "$operated" = "true" ]
+        then
+            shift
+        fi
+    done
+done

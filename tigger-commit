@@ -1,0 +1,194 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-commit
+# Adds a TRACTED file from the index into the branch repo.
+# Errors:
+    # -1.   .tigger not exists
+    # 0.    not enough argument (less than 2)
+    # 1.    #1 == "-a" but #2 != "-m"
+    # 2.    no commit message
+
+# Output cases:
+    # 1. if the files in the index is the same as the files in the branch,
+    #     then echo "nothing to commit"
+    # 2. else echo "Commited as commit $commit_number"
+    #     also do
+    #         2.1 add all related $files into corresponding commit folder
+    #             remove the commit folder in the current branch folder
+    #             copy the new commit folder into the current branch folder
+    #         2.2 update .commit_log
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
+
+# Error handlers
+
+if [ ! -d ".tigger" ]
+then
+    echo "tigger-commit: error: tigger repository directory .tigger not found" 1>&2
+    exit 1
+fi
+
+if [ $# -eq 2 ] && [ "$1" = '-m' ] && [ -n "$2" ]
+then
+    commit_all='false'
+    commit_message="$2"
+elif [ $# -eq 3 ] && [ "$1" = '-a' ] && [ "$2" = '-m' ] && [ -n "$3" ]
+then
+    commit_all='true'
+    commit_message="$3"
+else
+    echo "usage: tigger-commit [-a] -m commit-message" 1>&2
+    exit 1
+fi
+
+# Fetch branch name
+cd .tigger || exit 1
+while read -r line
+do
+    branch_name=$line
+    index=."$branch_name"/.index
+    commit_version_source=".$branch_name/.current_commit_version"
+done < .current_branch_name
+
+# Fetch current commit number
+commit_version_of_branch=$( cat "$commit_version_source" )
+
+# Fetch branch path
+if [ "$commit_version_of_branch" != '' ]
+then
+    branch=".$branch_name/.$commit_version_of_branch"
+fi
+
+
+if [ "$commit_all" = 'true' ]
+then
+    cd $index || exit
+    for file in *
+    do
+        cd ../../..
+        tigger-add $file
+        cd ".tigger/$index" || exit
+    done
+    cd ../..
+fi
+
+commit_required="false"
+# Compare the files in the index of the target branch WITH the files in the .$commit_version_of_branch of the target branch
+    # if none of the files in the index is different from the files in the root
+    # AND none of the files in the index is different from the files in the repo
+    # then commit_required="false"
+    # otherwise, commit_required="true"
+for file_from_index in "$index"/*
+do
+    # check if there exists any file is STAGED that needs to be commited
+    if [ -r "$file_from_index" ]
+    then
+        # compare
+        filename=$( echo "$file_from_index" | sed -E 's!.master/.index/!!' )
+        if [ "$commit_version_of_branch" != '' ]
+        # there is a recent commit, compare them
+        then
+            if [ -r "$branch/$filename" ]
+            then
+                file_from_branch="$branch/$filename"
+            else
+                # echo "Case: new file added to index"
+                commit_required="true"
+                break
+            fi
+            if ! diff "$file_from_index" "$file_from_branch" >>stderr
+            then
+                # echo "Case: new modification of file"
+                commit_required="true"
+                break
+            fi
+        # if is '', then we can conclude there is no commit yet, thus no files are backed up
+        # -> all files require commit
+        else
+            # echo "Case: first commit"
+            commit_required="true"
+        fi
+    else
+        # echo "Case: no file in index"
+        if [ "$commit_version_of_branch" != '' ]
+        then
+            cd "$branch" || exit 1
+            # pwd
+            for file_from_branch in *
+            do
+                # echo "for file $file_from_branch"
+                cd "../.index" || exit
+                # pwd
+                if [ ! -r "$file_from_branch" ] && [ "$file_from_branch" != '*' ]
+                then
+                    # echo "Case: file removed"
+                    commit_required='true'
+                fi
+                cd ../../"$branch"
+                # pwd
+            done
+            cd ../..
+        fi
+    fi
+done
+
+if [ "$commit_version_of_branch" != '' ]
+then
+    cd "$branch" || exit 1
+    # pwd
+    for file_from_branch in *
+    do
+        # echo "for file $file_from_branch"
+        cd "../.index" || exit
+        # pwd
+        if [ ! -r "$file_from_branch" ] && [ "$file_from_branch" != '*' ]
+        then
+            # echo "Case: file removed"
+            commit_required='true'
+        fi
+        cd ../../"$branch"
+        # pwd
+    done
+    cd ../..
+fi
+
+if [ "$commit_required" = "false" ]
+then
+    echo "nothing to commit"
+    exit 0
+elif [ "$commit_required" = "true" ]
+then
+    current_commit_version=$(wc -l .commit_log | cut -d' ' -f1)
+    # echo "following files are going to be commited as commit $current_commit_version"
+    mkdir ".commits/.$current_commit_version"
+    mkdir ".$branch_name/.$current_commit_version"
+    target_path_commit=".commits/.$current_commit_version"
+    target_path_branch=".$branch_name/.$current_commit_version"
+    for file_from_index in $index/*
+    do
+        if [ -r "$file_from_index" ]
+        then
+            filename=$( echo "$file_from_index" | sed -E 's!.master/.index/!!' )
+            cp "$file_from_index" "$target_path_commit"
+            cp "$file_from_index" "$target_path_branch"
+        fi
+    done
+    # update commit log
+    number_of_commits=$( wc -l .commit_log | cut -d' ' -f1 )
+    if [ $number_of_commits -ne 0 ]
+    then
+        sed -i "1i $number_of_commits $commit_message" .commit_log
+    else
+        echo "$number_of_commits $commit_message" > .commit_log
+    fi
+    # update branch_commit_version
+    echo "$number_of_commits" > "$commit_version_source"
+    # all work done, notify user
+    echo "Committed as commit $number_of_commits"
+    exit 0
+else
+    echo "===UNCOVERED CASE==="
+    exit 1
+fi

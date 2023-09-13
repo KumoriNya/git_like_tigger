@@ -1,0 +1,75 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-add
+# Adds an UNTRACTED file into the index of the branch.
+# Errors:
+    # -1.   .tigger not exists;
+    # 0.    no argument;
+    # 1.    target file(s) not exist.
+
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
+
+# Error handlers
+
+if [ ! -d ".tigger" ]
+then
+    echo "tigger-add: error: tigger repository directory .tigger not found" 1>&2
+    exit 1
+elif [ $# -eq 0 ]
+then
+    echo "usage: tigger-add <filenames>" 1>&2
+    exit 1
+fi
+
+# obtain branch name and its index directory
+branch_name=$(cat .tigger/.current_branch_name)
+index_of_branch=.tigger/."$branch_name"/.index
+
+for argument in "$@"
+do
+    if [ ! -r "$argument" ]
+    then
+        for file in "$index_of_branch/"*
+        do
+            if [ "$file" = "$index_of_branch/$argument" ]
+            then
+                file_is_in_branch=true
+                break
+            fi
+        done
+        if [ "$file_is_in_branch" = "true" ]
+        then
+            rm "$index_of_branch/$argument"
+        else
+            echo "tigger-add: error: can not open '$argument'" 1>&2
+            exit 1
+        fi
+    fi
+done
+
+# Fetching branch name
+cd .tigger || exit
+while read line
+do
+    branch_name="$line"
+    index=."$branch_name/.index"
+done < .current_branch_name
+
+# Start tracking the files
+for file in "$@"
+do
+    if [ -r ../"$file" ]
+    then
+        # # check if the file exists in the target branch
+        # if [ -r ."$branch_name"/$file ]
+        # then
+        #     echo "exists"
+        # else
+            touch "$index/$file"
+            cp "../$file" "$index/$file"
+        # fi
+    fi
+done

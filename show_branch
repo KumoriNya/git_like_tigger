@@ -1,0 +1,4 @@
+#!/bin/dash
+
+cd .tigger
+cat ".current_branch_name"

@@ -1,0 +1,30 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-log
+# Shows the commit history with a commit number and the corresponding message.
+# Errors:
+    # -1.   .tigger not exists
+    # 0.    too many argument
+
+# Output cases:
+    # the commit history with a commit number and the corresponding message
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
+
+# Error handlers
+
+if [ ! -d ".tigger" ]
+then
+    echo "tigger-log: error: tigger repository directory .tigger not found" 1>&2
+    exit 1
+fi
+
+if [ $# -gt 0 ]
+then
+    echo "usage: tigger-log" 1>&2
+    exit 1
+fi
+
+cat .tigger/.commit_log

@@ -1,0 +1,17 @@
+#!/bin/dash
+
+# ====================================================================
+# tigger-branch
+# Creates a new branch or delete an existing branch.
+# If the -d option is specified, the branch is deleted.
+# Errors:
+    # -1.   .tigger not exists
+    # 0.    too few arguments (less than 1) OR if $1 starts with --, then ...
+    # 1.    file not in the tigger repository
+    # 2.    file has staged changes in the index
+    # 3.    file in the repository is different to the working file
+    # 4.    file in index is different to both the working file and the repository
+
+# Written by: Claude Sun
+# For COMP2041 Assignment 1
+# ====================================================================
