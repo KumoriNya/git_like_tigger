@@ -18,3 +18,5 @@ Commands not covered:
   tigger-branch [-d] <branch-name>
   tigger-checkout <branch-name>
   tigger-merge <branch-name|commit> -m <message>
+
+Final Score: 84%
